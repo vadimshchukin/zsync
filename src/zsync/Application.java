@@ -15,7 +15,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.commons.net.ftp.FTPClient;
 
 public class Application {
 
@@ -174,7 +173,6 @@ public class Application {
 
         try {
             (new Application()).run(arguments);
-            ;
         } catch (Exception error) {
             System.out.println(error.getMessage());
         }
