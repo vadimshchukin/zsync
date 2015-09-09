@@ -5,8 +5,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -19,6 +21,7 @@ import org.apache.commons.cli.ParseException;
 public class Application {
 
     public Options createOptions() {
+
         Options options = new Options();
 
         options.addOption("h", "help", false, "print this help and exit");
@@ -44,6 +47,33 @@ public class Application {
         options.addOption("o", "upload", false, "upload");
 
         return options;
+    }
+    
+    public static String filePathToDatasetName(String filePath) {
+        String directories[] = filePath.split("\\" + File.separator);
+
+        String datasetName = "";
+        for (int directoryIndex = 0; directoryIndex < directories.length - 1; directoryIndex++) {
+            String directory = directories[directoryIndex];
+            if (directoryIndex > 0) {
+                datasetName += ".";
+            }
+            datasetName += String.format("%.8s", directory);
+        }
+
+        String memberName;
+        String fileName = directories[directories.length - 1];
+        int dotIndex = fileName.lastIndexOf(".");
+        if (dotIndex == -1) {
+            memberName = fileName;
+        } else {
+            memberName = String.format("%.8s", fileName.substring(0, dotIndex));
+        }
+        
+        datasetName = String.format("%s(%s)", datasetName, memberName);
+        datasetName = datasetName.toUpperCase();
+        
+        return datasetName;
     }
 
     public void run(String arguments[]) throws IOException, ParseException {
@@ -107,51 +137,70 @@ public class Application {
         if (verbose) {
             System.out.format("traversing '%s' directory files%n", localRootPath);
         }
-        List<File> fileList = Files.walk(localRootPath);
-        for (File file : fileList) {
+        List<File> files = Files.walk(localRootPath);
+        List<File> changedFiles = new ArrayList<File>();
+        for (File file : files) {
 
             if (!file.isFile()) {
                 continue;
             }
 
-            String relativeFilePath = file.getPath().substring(localRootPath.length() + 1);
-            IndexEntry indexEntry = index.getEntryMap().get(relativeFilePath);
+            String filePath = file.getPath().substring(localRootPath.length() + 1);
+            IndexEntry indexEntry = index.getEntryMap().get(filePath);
             if (indexEntry == null || file.lastModified() > indexEntry.getLastModified()) {
 
-                if (!clientFTP.isConnected()) {
-                    if (verbose) {
-                        System.out.format("connecting to '%s'%n", hostname);
-                    }
-                    clientFTP.connect(hostname);
+                changedFiles.add(file);
+            }
+        }
+        
+        List<String> removedFilePaths = new ArrayList<String>();
+        for (Map.Entry<String, IndexEntry> entry : index.getEntryMap().entrySet()) {
+            
+            boolean fileFound = (new File(localRootPath, entry.getKey())).exists();
+            
+            if (!fileFound) {
+                removedFilePaths.add(entry.getKey());
+            }
+        }
 
-                    if (verbose) {
-                        System.out.format("logging in '%s' as '%s'%n", hostname, username);
-                    }
-                    clientFTP.login(username, password);
-                }
+        if (changedFiles.size() > 0 || removedFilePaths.size() > 0) {
+            if (verbose) {
+                System.out.format("connecting to '%s'%n", hostname);
+            }
+            clientFTP.connect(hostname);
 
-                String qualifier = file.getParentFile().getName().toUpperCase();
-                String memberName = "";
-                int dotIndex = file.getName().indexOf(".");
-                if (dotIndex > 0) {
-                    memberName = file.getName().substring(0, dotIndex).toUpperCase();
-                }
-                String datasetName = String.format("%s.%s(%s)", remoteRootPath, qualifier, memberName);
+            if (verbose) {
+                System.out.format("logging in '%s' as '%s'%n", hostname, username);
+            }
+            clientFTP.login(username, password);
+        }
 
-                if (commandLine.hasOption("upload")) {
-                    System.out.format("uploading '%s' file to '%s' data set%n", relativeFilePath, datasetName);
-                    BufferedInputStream fileStream = new BufferedInputStream(new FileInputStream(file));
-                    clientFTP.storeFile(String.format("'%s'", datasetName), fileStream);
-                } else {
-                    System.out.format("'%s' file changed on %s%n", relativeFilePath,
-                            new SimpleDateFormat("dd.MM.yyyy HH:mm:ss").format(new Date(file.lastModified())));
-                }
+        for (File file : changedFiles) {
+
+            String filePath = file.getPath().substring(localRootPath.length() + 1);
+            
+            String datasetName = String.format("%s.%s", remoteRootPath, filePathToDatasetName(filePath));
+
+            if (commandLine.hasOption("upload")) {
+                System.out.format("uploading '%s' file to '%s' data set%n", filePath, datasetName);
+                BufferedInputStream fileStream = new BufferedInputStream(new FileInputStream(file));
+                clientFTP.storeDataset(datasetName, fileStream);
+            } else {
+                System.out.format("'%s' file changed on %s%n", filePath,
+                        new SimpleDateFormat("dd.MM.yyyy HH:mm:ss").format(new Date(file.lastModified())));
             }
 
-            indexEntry = new IndexEntry();
-            indexEntry.setPath(relativeFilePath);
+            IndexEntry indexEntry = new IndexEntry();
+            indexEntry.setPath(filePath);
             indexEntry.setLastModified(file.lastModified());
-            index.getEntryMap().put(relativeFilePath, indexEntry);
+            index.getEntryMap().put(filePath, indexEntry);
+        }
+        
+        for (String filePath : removedFilePaths) {
+            String datasetName = String.format("%s.%s", remoteRootPath, filePathToDatasetName(filePath));
+            System.out.format("deleting '%s' file from '%s' data set%n", filePath, datasetName);
+            clientFTP.deleteDataset(datasetName);
+            index.getEntryMap().remove(filePath);
         }
 
         if (clientFTP.isConnected()) {
