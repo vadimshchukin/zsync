@@ -13,30 +13,22 @@ public class FTPClient extends org.apache.commons.net.ftp.FTPClient {
         siteOptions.put(name, value);
     }
 
-    private static String formatSiteCommand(Map<String, Object> options) {
-
+    private String formatSiteOptions() {
         StringBuilder siteCommand = new StringBuilder();
-
-        for (Map.Entry<String, Object> option : options.entrySet()) {
+        for (Map.Entry<String, Object> option : siteOptions.entrySet()) {
             siteCommand.append(option.getKey());
             siteCommand.append("=");
             siteCommand.append(option.getValue());
             siteCommand.append(" ");
         }
-
         return siteCommand.toString();
     }
 
-    private void executeSiteCommand(Map<String, Object> options) throws IOException {
-        String siteCommand = formatSiteCommand(options);
-        site(siteCommand);
+    public int executeSiteCommand() throws IOException {
+        return site(formatSiteOptions());
     }
 
-    public void applySiteOptions() throws IOException {
-        executeSiteCommand(siteOptions);
-    }
-
-    private String formatDatasetName(String datasetName) {
+    private static String formatDatasetName(String datasetName) {
         return String.format("'%s'", datasetName);
     }
 
@@ -44,12 +36,12 @@ public class FTPClient extends org.apache.commons.net.ftp.FTPClient {
         return listNames(formatDatasetName(datasetName)) != null;
     }
 
-    public void createPDS(String datasetName) throws IOException {
-        makeDirectory(formatDatasetName(datasetName));
+    public boolean createPDS(String datasetName) throws IOException {
+        return makeDirectory(formatDatasetName(datasetName));
     }
 
-    public void deleteDataset(String datasetName) throws IOException {
-        deleteFile(formatDatasetName(datasetName));
+    public boolean deleteDataset(String datasetName) throws IOException {
+        return deleteFile(formatDatasetName(datasetName));
     }
 
     public boolean storeDataset(String datasetName, InputStream inputStream) throws IOException {

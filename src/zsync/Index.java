@@ -12,8 +12,9 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-@SuppressWarnings("serial")
 public class Index implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     public Index() {
     }
