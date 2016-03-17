@@ -5,7 +5,7 @@ z/OS data set uploading utility. Efficently uploads/synchronizes files to a z/OS
 
 Features
 -----------
-  - Uploads only files that have beeen added/changed on the local side.
+  - Uploads only files that have been added/changed on the local side.
   - Removes files that have been deleted on the local side.
 
 Command-line options
