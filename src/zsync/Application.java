@@ -1,11 +1,16 @@
 package zsync;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,26 +44,29 @@ public class Application {
         option = new Option("r", "remote-root", true, "remote root");
         option.setRequired(true);
         options.addOption(option);
-
-        options.addOption("i", "index-file", true, "index file");
+        
+        options.addOption("d", "datasets-options", true, "data sets allocation parameters");
+        options.addOption("x", "index-file", true, "index file");
         options.addOption("v", "verbose", false, "verbose");
-        options.addOption("i", "list", false, "list");
+        options.addOption("i", "update-index", false, "update index");
         options.addOption("o", "upload", false, "upload");
 
         return options;
     }
     
+    private boolean helpSpecified;
     private String hostname;
     private String username;
     private String password;
     private String localRootPath;
     private String remoteRootPath;
     private String indexFileName;
-    private boolean verbose;
-    private boolean list;
-    private boolean upload;
+    private boolean verboseSpecified;
+    private boolean updateIndexSpecified;
+    private boolean uploadSpecified;
+    private Map<String, String> datasetsOptions = new HashMap<String, String>();
     
-    private void processComandLineOptions(String commandLineArguments[]) throws ParseException {
+    private void processComandLineOptions(String commandLineArguments[]) throws ParseException, FileNotFoundException, IOException {
         CommandLineParser parser = new DefaultParser();
 
         Options options = new Options();
@@ -67,9 +75,7 @@ public class Application {
         CommandLine commandLine = parser.parse(options, commandLineArguments, true);
 
         if (commandLine.hasOption("help")) {
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.setOptionComparator(null);
-            formatter.printHelp("zsync", createCommandLineOptions());
+        	helpSpecified = true;
             return;
         }
 
@@ -92,6 +98,16 @@ public class Application {
         password = commandLine.getOptionValue("password");
         localRootPath = commandLine.getOptionValue("local-root");
         remoteRootPath = commandLine.getOptionValue("remote-root");
+        
+        try (BufferedReader reader = new BufferedReader(new FileReader(commandLine.getOptionValue("datasets-options")))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+            	int blankIndex = line.indexOf(" ");
+            	String datasetName = line.substring(0, blankIndex);
+            	String datasetOptions = line.substring(blankIndex + 1);
+            	datasetsOptions.put(datasetName, datasetOptions);
+            }
+        }
 
         indexFileName = null;
         if (commandLine.hasOption("index-file")) {
@@ -100,9 +116,9 @@ public class Application {
             indexFileName = "zsync.xml";
         }
 
-        verbose = commandLine.hasOption("verbose");
-        upload = commandLine.hasOption("upload");
-        list = commandLine.hasOption("list");
+        verboseSpecified = commandLine.hasOption("verbose");
+        uploadSpecified = commandLine.hasOption("upload");
+        updateIndexSpecified = commandLine.hasOption("update-index");
     }
     
     public String filePathToDatasetName(String filePath) {
@@ -151,7 +167,7 @@ public class Application {
     boolean filesChanged;
     
     private void synchronizeFiles() throws Exception {
-        if (verbose) {
+        if (verboseSpecified) {
             System.out.format("processing '%s' directory files%n", localRootPath);
         }
         List<File> files = Files.walk(localRootPath);
@@ -184,11 +200,11 @@ public class Application {
             return;
         }
         
-        if (verbose) {
+        if (verboseSpecified) {
             System.out.format("connecting to '%s' host%n", hostname);
         }
         clientFTP.connect(hostname);
-        if (verbose) {
+        if (verboseSpecified) {
             System.out.format("logging in '%s' host as '%s' user%n", hostname, username);
         }
         clientFTP.login(username, password);
@@ -197,9 +213,10 @@ public class Application {
 
             String filePath = file.getPath().substring(localRootPath.length() + 1);
 
-            if (upload) {
+            if (uploadSpecified) {
                 String datasetName = filePathToDatasetName(filePath);
                 String directoryName = getDatasetNameWithoutMember(datasetName);
+                String relativeDirectoryName = directoryName.substring(remoteRootPath.length() + 1);
                 System.out.format("uploading '%s' file to '%s' data set%n", filePath, directoryName);
                 BufferedInputStream fileStream = new BufferedInputStream(new FileInputStream(file));
                 if (!clientFTP.storeDataset(datasetName, fileStream)) {
@@ -207,7 +224,13 @@ public class Application {
                     if (replyString.indexOf("requests a nonexistent partitioned data set") != -1) {
                         System.out.println("upload has failed because data set does not exist");
                         
-                        System.out.format("creating '%s' data set%n", directoryName);
+                        if (datasetsOptions.containsKey(relativeDirectoryName)) {
+                        	String datasetParameters = datasetsOptions.get(relativeDirectoryName);
+                        	clientFTP.site(datasetParameters);
+                        	System.out.format("creating '%s' data set with parameters '%s'%n", directoryName, datasetParameters);
+                        } else {
+                        	System.out.format("creating '%s' data set%n", directoryName);                        	
+                        }
                         clientFTP.createPDS(directoryName);
                         
                         System.out.format("uploading '%s' file to '%s' data set%n", filePath, directoryName);
@@ -238,7 +261,7 @@ public class Application {
         }
 
         if (clientFTP.isConnected()) {
-            if (verbose) {
+            if (verboseSpecified) {
                 System.out.format("logging out '%s' host%n", hostname);
             }
             clientFTP.logout();
@@ -248,11 +271,18 @@ public class Application {
     public void run(String arguments[]) throws Exception {
         
         processComandLineOptions(arguments);
+        
+        if (helpSpecified) {
+        	HelpFormatter formatter = new HelpFormatter();
+            formatter.setOptionComparator(null);
+            formatter.printHelp("zsync", createCommandLineOptions());
+            return;
+        }
 
         /* load file index */
         File indexFile = new File(indexFileName);
         if (indexFile.exists()) {
-            if (verbose) {
+            if (verboseSpecified) {
                 System.out.format("loading index from '%s' file%n", indexFileName);
             }
             index = Index.loadFromFile(indexFile);
@@ -263,8 +293,8 @@ public class Application {
         synchronizeFiles();
 
         /* save file index if neccesary */
-        if (!list && filesChanged) {
-            if (verbose) {
+        if (!updateIndexSpecified && filesChanged) {
+            if (verboseSpecified) {
                 System.out.format("saving index to '%s' file%n", indexFileName);
             }
             index.saveToFile(indexFile);
