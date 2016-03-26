@@ -45,6 +45,7 @@ public class Application {
         option.setRequired(true);
         options.addOption(option);
         
+        options.addOption("e", "exclude-path", true, "exclude path from the synchronization");
         options.addOption("d", "datasets-options", true, "data sets allocation parameters");
         options.addOption("x", "index-file", true, "index file");
         options.addOption("v", "verbose", false, "verbose");
@@ -60,6 +61,7 @@ public class Application {
     private String password;
     private String localRootPath;
     private String remoteRootPath;
+    private String[] excludePaths;
     private String indexFileName;
     private boolean verboseSpecified;
     private boolean updateIndexSpecified;
@@ -99,14 +101,18 @@ public class Application {
         localRootPath = commandLine.getOptionValue("local-root");
         remoteRootPath = commandLine.getOptionValue("remote-root");
         
-        try (BufferedReader reader = new BufferedReader(new FileReader(commandLine.getOptionValue("datasets-options")))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-            	int blankIndex = line.indexOf(" ");
-            	String datasetName = line.substring(0, blankIndex);
-            	String datasetOptions = line.substring(blankIndex + 1);
-            	datasetsOptions.put(datasetName, datasetOptions);
-            }
+        excludePaths = commandLine.getOptionValues("exclude-path");
+        
+        if (commandLine.hasOption("datasets-options")) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(commandLine.getOptionValue("datasets-options")))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                	int blankIndex = line.indexOf(" ");
+                	String datasetName = line.substring(0, blankIndex);
+                	String datasetOptions = line.substring(blankIndex + 1);
+                	datasetsOptions.put(datasetName, datasetOptions);
+                }
+            }        	
         }
 
         indexFileName = null;
@@ -178,6 +184,18 @@ public class Application {
             }
 
             String filePath = file.getPath().substring(localRootPath.length() + 1);
+            
+            boolean excludeFile = false;
+            for (String excludePath : excludePaths) {
+            	if (filePath.startsWith(excludePath)) {
+            		excludeFile = true;
+            		break;
+            	}
+            }
+            if (excludeFile) {
+            	continue;
+            }
+            
             IndexEntry indexEntry = index.getEntryMap().get(filePath);
             if (indexEntry == null || file.lastModified() > indexEntry.getLastModified()) {
                 changedFiles.add(file);

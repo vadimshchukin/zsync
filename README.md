@@ -18,6 +18,7 @@ Command-line options
  -p,--password <arg>           FTP password
  -l,--local-root <arg>         local root
  -r,--remote-root <arg>        remote root
+ -e,--exclude-path <arg>       exclude path from the synchronization
  -d,--datasets-options <arg>   data sets allocation parameters
  -x,--index-file <arg>         index file
  -v,--verbose                  verbose
