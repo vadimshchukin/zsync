@@ -9,6 +9,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -61,7 +62,7 @@ public class Application {
     private String password;
     private String localRootPath;
     private String remoteRootPath;
-    private String[] excludePaths;
+    private List<String> excludePaths = new ArrayList<String>();
     private String indexFileName;
     private boolean verboseSpecified;
     private boolean updateIndexSpecified;
@@ -101,7 +102,10 @@ public class Application {
         localRootPath = commandLine.getOptionValue("local-root");
         remoteRootPath = commandLine.getOptionValue("remote-root");
         
-        excludePaths = commandLine.getOptionValues("exclude-path");
+        String[] excludePaths = commandLine.getOptionValues("exclude-path");
+        if (excludePaths != null) {
+        	this.excludePaths = Arrays.asList(excludePaths);        	
+        }
         
         if (commandLine.hasOption("datasets-options")) {
             try (BufferedReader reader = new BufferedReader(new FileReader(commandLine.getOptionValue("datasets-options")))) {
@@ -234,7 +238,6 @@ public class Application {
             if (uploadSpecified) {
                 String datasetName = filePathToDatasetName(filePath);
                 String directoryName = getDatasetNameWithoutMember(datasetName);
-                String relativeDirectoryName = directoryName.substring(remoteRootPath.length() + 1);
                 System.out.format("uploading '%s' file to '%s' data set%n", filePath, directoryName);
                 BufferedInputStream fileStream = new BufferedInputStream(new FileInputStream(file));
                 if (!clientFTP.storeDataset(datasetName, fileStream)) {
@@ -242,7 +245,12 @@ public class Application {
                     if (replyString.indexOf("requests a nonexistent partitioned data set") != -1) {
                         System.out.println("upload has failed because data set does not exist");
                         
-                        if (datasetsOptions.containsKey(relativeDirectoryName)) {
+                        String relativeDirectoryName = null;
+                        if (directoryName.length() > remoteRootPath.length() && datasetsOptions.containsKey(relativeDirectoryName)) {
+                        	relativeDirectoryName = directoryName.substring(remoteRootPath.length() + 1);                        	
+                        }
+                        
+                        if (relativeDirectoryName != null && datasetsOptions.containsKey(relativeDirectoryName)) {
                         	String datasetParameters = datasetsOptions.get(relativeDirectoryName);
                         	clientFTP.site(datasetParameters);
                         	System.out.format("creating '%s' data set with parameters '%s'%n", directoryName, datasetParameters);
